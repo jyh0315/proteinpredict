@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>2D 다중 단백질 열역학 & 돌연변이 시뮬레이터</title>
+
+<!-- 웹폰트: Pretendard(UI), JetBrains Mono(수치 데이터) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header">
+  <h1>단백질 열역학 & 돌연변이 샌드박스</h1>
+  <p class="subtitle">2D Protein Thermodynamics &amp; Mutation Simulator — 과학고 세특 탐구용</p>
+</header>
+
+<main class="app-layout">
+
+  <!-- ============ 좌측: 컨트롤 패널 ============ -->
+  <aside class="panel control-panel">
+
+    <section class="panel-block">
+      <h2>사슬 (Chain)</h2>
+      <button id="btn-add-chain" class="btn btn-primary">+ 새 사슬 추가</button>
+      <div id="chain-tabs" class="chain-tabs"></div>
+    </section>
+
+    <section class="panel-block">
+      <h2>잔기 추가 (활성 사슬 꼬리에)</h2>
+      <div class="residue-buttons">
+        <button class="btn residue-btn" data-type="H">H<span>소수성</span></button>
+        <button class="btn residue-btn" data-type="P">P<span>친수성</span></button>
+        <button class="btn residue-btn" data-type="C">C<span>시스테인</span></button>
+        <button class="btn residue-btn" data-type="A">A<span>산성(-)</span></button>
+        <button class="btn residue-btn" data-type="B">B<span>염기성(+)</span></button>
+        <button class="btn residue-btn" data-type="N">N<span>중성</span></button>
+      </div>
+    </section>
+
+    <section class="panel-block">
+      <h2>환경 변수</h2>
+
+      <div class="env-toggle" id="env-toggle">
+        <button class="env-btn active" data-env="aqueous">💧 수용성</button>
+        <button class="env-btn" data-env="lipid">🛢 지용성</button>
+      </div>
+      <p id="env-hint" class="env-hint"></p>
+
+      <div class="slider-block" id="temp-slider-block">
+        <div class="slider-label-row">
+          <label for="temp-slider">온도 Temperature</label>
+          <span id="temp-value" class="mono-value">50</span>
+        </div>
+        <input type="range" id="temp-slider" min="0" max="100" value="50" step="1" class="slider slider-temp" />
+      </div>
+
+      <div class="slider-block">
+        <div class="slider-label-row">
+          <label for="ph-slider">pH</label>
+          <span id="ph-value" class="mono-value">7.0</span>
+        </div>
+        <input type="range" id="ph-slider" min="0" max="14" value="7" step="0.1" class="slider slider-ph" />
+      </div>
+    </section>
+
+    <section class="panel-block">
+      <h2>결합 &amp; 시뮬레이션 제어</h2>
+      <button id="btn-reducing-agent" class="btn btn-toggle">환원제 투입: <span id="reducing-state">OFF</span></button>
+      <div class="btn-row">
+        <button id="btn-pause" class="btn btn-secondary">⏸ 일시정지</button>
+        <button id="btn-reset" class="btn btn-secondary">↺ 리셋</button>
+      </div>
+    </section>
+
+    <section class="panel-block">
+      <h2>데이터 내보내기</h2>
+      <button id="btn-csv" class="btn btn-primary">⬇ CSV 다운로드</button>
+    </section>
+
+  </aside>
+
+  <!-- ============ 중앙: 캔버스 ============ -->
+  <section class="panel canvas-panel" id="canvas-panel">
+    <div id="canvas-container"></div>
+    <div class="legend">
+      <span class="legend-item"><i class="dot dot-H"></i>H 소수성</span>
+      <span class="legend-item"><i class="dot dot-P"></i>P 친수성</span>
+      <span class="legend-item"><i class="dot dot-C"></i>C 시스테인</span>
+      <span class="legend-item"><i class="dot dot-A"></i>A 산성(-)</span>
+      <span class="legend-item"><i class="dot dot-B"></i>B 염기성(+)</span>
+      <span class="legend-item"><i class="dot dot-N"></i>N 중성</span>
+      <span class="legend-item"><i class="line line-disulfide"></i>이황화 결합</span>
+      <span class="legend-item"><i class="line line-saltbridge"></i>염교(salt bridge)</span>
+    </div>
+  </section>
+
+  <!-- ============ 우측/하단: 그래프 패널 ============ -->
+  <section class="panel graph-panel">
+    <h2>깁스 자유에너지 (ΔG)</h2>
+    <div class="readout-grid">
+      <div class="readout">
+        <span class="readout-label">ΔG</span>
+        <span id="dg-value" class="mono-value big">0.00</span>
+      </div>
+      <div class="readout">
+        <span class="readout-label">프레임</span>
+        <span id="frame-value" class="mono-value">0</span>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="dg-chart"></canvas>
+    </div>
+    <p class="graph-note">최근 200프레임만 표시됩니다. 전체 기록은 CSV에 포함됩니다.</p>
+  </section>
+
+</main>
+
+<!-- 돌연변이 선택 팝업 (동적 위치 지정, JS에서 표시) -->
+<div id="mutation-popup" class="mutation-popup hidden">
+  <div class="mutation-popup-title">잔기 종류 선택</div>
+  <div class="mutation-popup-grid">
+    <button class="mp-btn" data-type="H">H</button>
+    <button class="mp-btn" data-type="P">P</button>
+    <button class="mp-btn" data-type="C">C</button>
+    <button class="mp-btn" data-type="A">A</button>
+    <button class="mp-btn" data-type="B">B</button>
+    <button class="mp-btn" data-type="N">N</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="sketch.js"></script>
+</body>
+</html>
